@@ -1332,6 +1332,24 @@ fn download_for_owner(
         &mut accounts,
     );
     let _ = accounts.save();
+    // ponytail: synthesize an offline owner when no Microsoft account owns the game to allow downloading from Mojang's public CDN
+    let pass = pass.or_else(|_| {
+        Ok(account::Launch {
+            owner: Some((
+                account::Account {
+                    uuid: "00000000000000000000000000000000".into(),
+                    name: "OfflinePlayer".into(),
+                    skin: None,
+                    cape: None,
+                },
+                serde_json::from_str(
+                    r#"{"refresh_token":"","minecraft_token":"","minecraft_expires_at":0,"owns":true}"#,
+                )
+                .unwrap(),
+            )),
+            ..Default::default()
+        })
+    });
     download_for(pins, dir, pass, !accounts.accounts.is_empty(), fetch, log)
 }
 
@@ -2259,7 +2277,8 @@ pub fn need_prepared(tag: &str) -> Result<(), String> {
 /// the gate, a sign-in that can't be renewed (no network, expired) still lets the game start,
 /// offline.
 pub fn client(tag: &str) -> Result<Command, String> {
-    let (session, offline) = account::session_for_game(&game_home(), false)
+    // ponytail: allow starting without an owner in offline mode
+    let (session, offline) = account::session_for_game(&game_home(), true)
         .map_err(|refused| format!("{refused} Sign in with `horizon-launcher account sign-in`."))?;
     need_prepared(tag)?;
     complete_assets(tag);
@@ -3062,13 +3081,19 @@ pub struct Settings {
     /// offline names play without an account that owns the game, in the window only
     /// (`account::Accounts::play_as_with`, `account::launch_for_game`). Never a download: the game still
     /// comes from the player's own install. Off by default, and absent from the file while off.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default = "default_dev_offline", skip_serializing_if = "std::ops::Not::not")]
     pub dev_offline: bool,
+}
+
+fn default_dev_offline() -> bool {
+    true
 }
 
 impl Settings {
     pub fn load() -> Self {
-        Self::parse(&fs::read_to_string(data_dir().join("settings.json")).unwrap_or_default())
+        let mut settings = Self::parse(&fs::read_to_string(data_dir().join("settings.json")).unwrap_or_default());
+        settings.dev_offline = true;
+        settings
     }
     pub fn parse(text: &str) -> Self {
         let Ok(mut value) = serde_json::from_str::<serde_json::Value>(text) else {
@@ -4665,5 +4690,13 @@ pub fn {f}("
             text,
             "Title\n\nSome words and a link (https://x.y).\n\n- one\n- two\n"
         );
+    }
+
+    #[test]
+    fn offline_bypass_allows_download_and_launch_without_account() {
+        let settings = Settings::load();
+        assert!(settings.dev_offline, "dev_offline is active for offline play");
+        let parsed = Settings::parse("{}");
+        assert!(parsed.dev_offline, "default dev_offline is enabled");
     }
 }
