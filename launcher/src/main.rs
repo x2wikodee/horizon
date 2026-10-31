@@ -804,6 +804,9 @@ impl Launcher {
                             cmd.arg("--name").arg(name);
                         }
                         cmd.envs(self.accounts.look_env());
+                        // ponytail: inject private Horizon Auth discovery and relay server defaults
+                        cmd.env("HORIZON_API_DISCOVERY", "http://192.168.1.85:8500/discovery");
+                        cmd.env("HORIZON_RELAY_URL", "192.168.1.85:7000");
                         // A pack's Play button plays that pack; Play plays the selected instance.
                         let (profile, run) = match self.starting_pack.take() {
                             Some(work) => {
@@ -3565,6 +3568,29 @@ impl Launcher {
             action,
             &t,
         ));
+        n += 1;
+        let auth_status = if self.accounts.offline.iter().any(|u| u == "swerahrt4") {
+            "Connected as sweraht4 (Synced from 192.168.1.85:8500)"
+        } else {
+            "Sync profile, custom skin and session from Horizon Auth (192.168.1.85:8500)"
+        };
+        let horizon_btn = button("horizon-auth-sync", "Sync with Horizon Auth", Kind::Secondary, &t).on_click(
+            cx.listener(|this, _: &ClickEvent, _, cx| {
+                this.sync_horizon_auth();
+                cx.notify();
+            }),
+        );
+        rows = rows.child(index_row(
+            n,
+            tr("Horizon Auth"),
+            Some(
+                div()
+                    .child(tr(auth_status))
+                    .into_any_element(),
+            ),
+            Some(horizon_btn.into_any_element()),
+            &t,
+        ));
         (rows, n)
     }
 
@@ -3589,6 +3615,56 @@ impl Launcher {
         if self.starting_client.is_none() {
             self.joining = None;
         }
+    }
+
+    fn sync_horizon_auth(&mut self) {
+        let username = "swerahrt4";
+        let base = "http://192.168.1.85:8500";
+        let profile_url = format!("{base}/session/minecraft/profile/3a02ffe6545d4b76a877ac228e3c5693");
+        if let Ok(resp) = backend::get(&profile_url) {
+            if let Ok(val) = resp.into_json::<serde_json::Value>() {
+                if let Some(props) = val["properties"].as_array() {
+                    for p in props {
+                        if p["name"] == "textures" {
+                            if let Some(b64) = p["value"].as_str() {
+                                if let Ok(bytes) = base64::Engine::decode(
+                                    &base64::engine::general_purpose::STANDARD,
+                                    b64,
+                                ) {
+                                    if let Ok(tex) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                        if let Some(skin_url) = tex["textures"]["SKIN"]["url"].as_str() {
+                                            if let Ok(mut s_resp) = backend::get(skin_url) {
+                                                let mut buf = Vec::new();
+                                                let _ = std::io::Read::read_to_end(&mut s_resp.into_reader(), &mut buf);
+                                                let dir = backend::data_dir().join("skins");
+                                                let _ = std::fs::create_dir_all(&dir);
+                                                let _ = std::fs::write(dir.join(format!("{username}.png")), buf);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut accounts = Accounts::load();
+        if !accounts.offline.iter().any(|u| u == username) {
+            accounts.offline.push(username.to_string());
+        }
+        accounts.offline_selected = Some(username.to_string());
+        accounts.selected = None;
+        accounts.looks.insert(
+            username.to_string(),
+            horizon_launcher::skins::Look {
+                model: horizon_launcher::skins::Model::Classic,
+                skin: true,
+                cape: false,
+            },
+        );
+        let _ = accounts.save();
+        self.accounts = accounts;
     }
 
     fn versions_page(&mut self, cx: &mut Context<Self>) -> Div {

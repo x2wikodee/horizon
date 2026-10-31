@@ -2293,6 +2293,9 @@ pub fn client(tag: &str) -> Result<Command, String> {
     if let Some(e) = account::take_unsaved() {
         eprintln!("{e}");
     }
+    // ponytail: inject Horizon Auth discovery and relay server defaults
+    cmd.env("HORIZON_API_DISCOVERY", "http://192.168.1.85:8500/discovery");
+    cmd.env("HORIZON_RELAY_URL", "192.168.1.85:7000");
     append_game_args(&mut cmd);
     Ok(cmd)
 }
