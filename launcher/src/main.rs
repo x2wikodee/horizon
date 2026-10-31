@@ -3569,14 +3569,9 @@ impl Launcher {
             &t,
         ));
         n += 1;
-        let auth_status = if self.accounts.offline.iter().any(|u| u == "swerahrt4") {
-            "Connected as sweraht4 (Synced from 192.168.1.85:8500)"
-        } else {
-            "Sync profile, custom skin and session from Horizon Auth (192.168.1.85:8500)"
-        };
-        let horizon_btn = button("horizon-auth-sync", "Sync with Horizon Auth", Kind::Secondary, &t).on_click(
+        let horizon_btn = microsoft::horizon_sign_in_button("horizon-auth-login", &t).on_click(
             cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.sync_horizon_auth();
+                this.start_horizon_web_login(cx);
                 cx.notify();
             }),
         );
@@ -3585,7 +3580,7 @@ impl Launcher {
             tr("Horizon Auth"),
             Some(
                 div()
-                    .child(tr(auth_status))
+                    .child(tr("Sign in or sync profile and skin via http://192.168.1.85:8500"))
                     .into_any_element(),
             ),
             Some(horizon_btn.into_any_element()),
@@ -3665,6 +3660,26 @@ impl Launcher {
         );
         let _ = accounts.save();
         self.accounts = accounts;
+    }
+
+    fn start_horizon_web_login(&mut self, cx: &mut Context<Self>) {
+        let tx = self.tx.clone();
+        if let Ok(listener) = std::net::TcpListener::bind("127.0.0.1:0") {
+            if let Ok(addr) = listener.local_addr() {
+                let port = addr.port();
+                cx.open_url(&format!("http://192.168.1.85:8500/?port={port}"));
+                std::thread::spawn(move || {
+                    if let Ok((mut stream, _)) = listener.accept() {
+                        let mut buf = [0u8; 1024];
+                        let _ = std::io::Read::read(&mut stream, &mut buf);
+                        let resp = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<!DOCTYPE html><html><body style='background:#0f172a;color:#f8fafc;font-family:sans-serif;text-align:center;padding:50px;'><h1>Login Successful!</h1><p>You can close this tab and return to Horizon Launcher.</p></body></html>";
+                        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+                        let _ = tx.send(Msg::Owner(true));
+                    }
+                });
+            }
+        }
+        self.sync_horizon_auth();
     }
 
     fn versions_page(&mut self, cx: &mut Context<Self>) -> Div {

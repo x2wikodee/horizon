@@ -62,3 +62,27 @@ pub(super) fn sign_in_button(id: &'static str, t: &Theme) -> Stateful<Div> {
                 .child(tr("Sign in with Microsoft").to_string()),
         )
 }
+
+/// The Horizon Auth button (matching Microsoft button style with Horizon violet theme).
+pub(super) fn horizon_sign_in_button(id: &'static str, t: &Theme) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(10.))
+        .h(px(41.))
+        .px(px(14.))
+        .rounded(px(theme::RADIUS))
+        .bg(t.accent)
+        .cursor_pointer()
+        .hover(|s| s.opacity(0.9))
+        .child(
+            div()
+                .text_size(px(15.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(gpui::rgb(0xffffff))
+                .whitespace_nowrap()
+                .child(tr("Sign in with Horizon Auth").to_string()),
+        )
+}

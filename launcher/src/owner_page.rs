@@ -168,12 +168,27 @@ impl Launcher {
             Shown::Starting => None,
             Shown::Error(_) if !configured => None,
             _ => Some(
-                microsoft::sign_in_button("owner-sign-in", &t).on_click(cx.listener(
-                    |this, _: &ClickEvent, _, cx| {
-                        this.sign_in_to_play();
-                        cx.notify();
-                    },
-                )),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        microsoft::sign_in_button("owner-sign-in", &t).on_click(cx.listener(
+                            |this, _: &ClickEvent, _, cx| {
+                                this.sign_in_to_play();
+                                cx.notify();
+                            },
+                        )),
+                    )
+                    .child(
+                        microsoft::horizon_sign_in_button("owner-horizon-sign-in", &t).on_click(
+                            cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.start_horizon_web_login(cx);
+                                this.close_owner_screen();
+                                cx.notify();
+                            }),
+                        ),
+                    ),
             ),
         };
         let waiting = matches!(state, Shown::Code(..)).then(|| {
